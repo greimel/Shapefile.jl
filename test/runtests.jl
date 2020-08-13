@@ -100,57 +100,102 @@ test_tuples = [
 
 @testset "Shapefile" begin
 
-for test in test_tuples
-    shp = open(joinpath(@__DIR__, test.path)) do fd
-        read(fd, Shapefile.Handle)
-    end
-    shapes = unique(map(typeof, shp.shapes))   
-    @test shapes[1] == test.geomtype
-    @test shp.MBR == test.bbox
-    @test shp.shapeType == test.shapetype
+test = test_tuples[12]
+
+shp = open(joinpath(@__DIR__, test.path)) do fd
+    read(fd, Shapefile.Handle)
 end
 
+shp.shapes
+[Shapefile.clockwise(p[1]) for p in test.coordinates[1]] |> only
+[Shapefile.clockwise(p[1]) for p in test.coordinates[2]] |> only
+[Shapefile.clockwise(p[1]) for p in test.coordinates[3]] |> only
+[Shapefile.clockwise(p[1]) for p in test.coordinates[4]] #|> only
+[Shapefile.clockwise(p[1]) for p in test.coordinates[5]] #|> only
+[Shapefile.clockwise(p[1]) for p in test.coordinates[6]] |> only
+using Underscores
+
+arrows
+
+direc(pts) = [0.9*(pts[i+1] .- pts[i]) for i in 1:length(pts)-1]
+@_ Point2.(test.coordinates[4][1][1]) |> arrows(__[1:end-1], direc(__), color=:red, arrowsize=10px)
+@_ Point2.(test.coordinates[4][2][1]) |> arrows!(__[1:end-1], direc(__), color=:blue, arrowsize=10px)
+scn = @_ Point2.(test.coordinates[4][3][1]) |> arrows!(__[1:end-1], direc(__), color=:blue, arrowsize=10px)
+
+save("/tmp/clockwise2.png", scn)
+
+arrows
+using AbstractPlotting, CairoMakie
+
+[Shapefile.clockwise(p[1]) for p in test.coordinates[1]]
+
+test.coordinates[2]
+test.coordinates[3]
+
+
+[Shapefile.clockwise(test.coordinates[i][1][1]) for i in 1:3]
+pts = test.coordinates[2][1][1]
+Shapefile.edges(pts) |> collect 
+Shapefile.clockwise(pts)
+
+20 * 320 - 30 * 320 + 10
+@testset "Shapefile 1" begin
+    for test in test_tuples
+        @testset "$(test.path)" begin
+    
+            shp = open(joinpath(@__DIR__, test.path)) do fd
+                read(fd, Shapefile.Handle)
+            end
+            shapes = unique(map(typeof, shp.shapes))   
+            @test shapes[1] == test.geomtype
+            @test shp.MBR == test.bbox
+            @test shp.shapeType == test.shapetype
+        end
+    end
+end
+
+@testset "Offsets" begin
 # Test all .shx files; the values in .shx must match the .shp offsets
-for test in test_tuples
-
-    offsets = Int32[]
-    contentlens = Int32[]
-
-    # Get the shapefile's record offsets and contentlens
-    shp = open(joinpath(@__DIR__, test.path)) do fd
-        seek(fd, 32)
-        shapeType = read(fd, Int32)
-        seek(fd, 100)
-        jltype = Shapefile.SHAPETYPE[shapeType]
-        push!(offsets, position(fd))
-        while (!eof(fd))
-
-            num = bswap(read(fd, Int32))
-            rlength = bswap(read(fd, Int32))
+ for test in test_tuples
+    @testset "$(test.path)" begin
+        offsets = Int32[]
+        contentlens = Int32[]
+    
+        # Get the shapefile's record offsets and contentlens
+        shp = open(joinpath(@__DIR__, test.path)) do fd
+            seek(fd, 32)
             shapeType = read(fd, Int32)
-            if shapeType !== Int32(0)
-                read(fd, jltype)
-            end
-
-            # records the offest after this geometry record
+            seek(fd, 100)
+            jltype = Shapefile.SHAPETYPE[shapeType]
             push!(offsets, position(fd))
-        end
-    end
-    contentlens = diff(offsets)
-    offsets = offsets[1:end-1]
-
-    # Match the Index values to Shapefile offsets
-    shx =
-        open(joinpath(@__DIR__, replace(test.path, r".shp$" => ".shx"))) do fd
-            shx = read(fd, Shapefile.IndexHandle)
-            for sIdx = 1:lastindex(shx.indices)
-                @test shx.indices[sIdx].offset * 2 == offsets[sIdx]
-                @test shx.indices[sIdx].contentLen * 2 + 8 == contentlens[sIdx]
+            while (!eof(fd))
+    
+                num = bswap(read(fd, Int32))
+                rlength = bswap(read(fd, Int32))
+                shapeType = read(fd, Int32)
+                if shapeType !== Int32(0)
+                    read(fd, jltype)
+                end
+    
+                # records the offest after this geometry record
+                push!(offsets, position(fd))
             end
         end
-
+        contentlens = diff(offsets)
+        offsets = offsets[1:end-1]
+    
+        # Match the Index values to Shapefile offsets
+        shx =
+            open(joinpath(@__DIR__, replace(test.path, r".shp$" => ".shx"))) do fd
+                shx = read(fd, Shapefile.IndexHandle)
+                for sIdx = 1:lastindex(shx.indices)
+                    @test shx.indices[sIdx].offset * 2 == offsets[sIdx]
+                    @test shx.indices[sIdx].contentLen * 2 + 8 == contentlens[sIdx]
+                end
+            end
+    end
+ end
 end
-
 include("table.jl")
 
 end  # @testset "Shapefile"

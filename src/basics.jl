@@ -1,6 +1,7 @@
 using PolygonOps
 
 function parts_polygon(points::Vector{Point}, parts::Vector{Int32})
+    @show "HERE!!!!"
     exterior_pts = Vector{GB.Point{2, Float64}}[]
     interior_pts = Vector{GB.Point{2, Float64}}[]
     parts .+= 1
@@ -9,17 +10,19 @@ function parts_polygon(points::Vector{Point}, parts::Vector{Int32})
     # - determine if rings are exterior or interior (holes)
     for i in 1:(length(parts)-1)
         pts = collect(points[x] for x in parts[i]:parts[i+1]-1)
-        if hole(pts)
-            push!(interior_pts, pts)
-        else
+        if ring(pts)
             push!(exterior_pts, pts)
+        else
+            @assert hole(pts)
+            push!(interior_pts, pts)
         end
     end
 
-    if length(exterior_pts) == 0 && length(interior_pts) == 1
+    if false #length(exterior_pts) == 0 && length(interior_pts) == 1
         polygons = [GB.Polygon(GB.LineString(only(interior_pts)))]
-
+        @warn "hit special case"
     elseif length(exterior_pts) == 1 # need GB.Polygon
+        @warn "hit normal case 1"
         exterior = GB.LineString(only(exterior_pts))
         if length(interior_pts) != 0
             interiors = collect(GB.LineString(pts) for pts in interior_pts)
@@ -27,7 +30,8 @@ function parts_polygon(points::Vector{Point}, parts::Vector{Int32})
         else
             polygons = [GB.Polygon(exterior)]
         end
-    else # need GB.MultiPolygon
+    elseif length(exterior_pts) > 1 # need GB.MultiPolygon
+        @warn "hit normal case 2"
         # 1) match exteriors with interiors
         if length(interior_pts) == 0
             polygons = GB.Polygon.(exterior_pts)
@@ -40,6 +44,10 @@ function parts_polygon(points::Vector{Point}, parts::Vector{Int32})
                     ext = exterior_pts[i_ext]
                     inpolygon(pt_int, ext) == 1 # TODO: function should return a Bool
                 end
+                
+                @assert inpolygon(pt_int, exterior_pts[i_ext_matched])
+                
+                i_ext_matched
             end
             # 2) for each exterior collect all associated interiors
             polygons = map(enumerate(exterior_pts)) do (i_ext, ext)
@@ -48,6 +56,8 @@ function parts_polygon(points::Vector{Point}, parts::Vector{Int32})
                 GB.Polygon(exterior, interiors)
             end
         end
+    else
+        @error "reached unreachable"
     end
 
     return GB.MultiPolygon(polygons)
@@ -63,8 +73,15 @@ function f(edge)
     (x2 - x1) * (y2 + y1)
     #y1 * x2 - y2 * x1 # used in linked js code
 end
-edges(pts) = zip(pts, ShiftedArrays.circshift(pts, -1)) # ShiftedArrays.circshift is lazy
+function edges(pts)
+    # if ring is closed, drop first point
+    n = pts[1] == pts[end]
+    pts_ = @view pts[n+1:end]
+    zip(pts_, ShiftedArrays.circshift(pts_, -1)) # ShiftedArrays.circshift is lazy
+end
+
 clockwise(pts) = sum(f, edges(pts)) >= 0
+ring(pts) = clockwise(pts)
 hole(pts) = !clockwise(pts)
 
 function parts_polyline(points::Vector{Point}, parts::Vector{Int32})
