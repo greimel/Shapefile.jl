@@ -45,7 +45,11 @@ function parts_polygon(points::Vector{Point}, parts::Vector{Int32})
             polygons = map(enumerate(exterior_pts)) do (i_ext, ext)
                 interiors = GB.LineString.(interior_pts[i_exterior_matched .== i_ext])
                 exterior = GB.LineString(ext)
-                GB.Polygon(exterior, interiors)
+                if length(interiors) == 0
+                    GB.Polygon(exterior)
+                else
+                    GB.Polygon(exterior, interiors)
+                end
             end
         end
     end
